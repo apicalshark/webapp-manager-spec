@@ -13,9 +13,15 @@ jobs:
   check_and_update:
     runs-on: ubuntu-latest
     env:
+      # --- CONFIGURATION: Set these for your target repository ---
+      # The repository to check for new releases (e.g., "linuxmint/webapp-manager")
       TARGET_REPO: "linuxmint/webapp-manager"
-      SPEC_FILE: "webapp-manager.spec"
-      #TAG_PREFIX: "release-"
+      # The path to your RPM spec file.
+      SPEC_FILE: "webapp-manager.spec" 
+      # Set to 'true' to include pre-releases (e.g., v1.2.3-rc1). Default is false.
+      INCLUDE_PRERELEASES: "false"
+      # Optional prefix to remove from the git tag (e.g., "v" for tags like "v1.2.3").
+      TAG_PREFIX: ""
 
     steps:
       - name: Checkout local repository
@@ -24,21 +30,36 @@ jobs:
       - name: Get latest release tag from GitHub
         id: get_remote_tag
         run: |
-          LATEST_TAG=$(curl -s "https://api.github.com/repos/${{ env.TARGET_REPO }}/releases/latest" | jq -r '.tag_name')
-          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
-
-          if [[ -z "$LATEST_TAG" ]]; then
-            echo "::warning::Could not fetch latest tag from GitHub API for ${{ env.TARGET_REPO }}. Please check API rate limits or repository availability."
-            exit 1
+          JQ_FILTER='.[] | .tag_name'
+          if [[ "${{ env.INCLUDE_PRERELEASES }}" != "true" ]]; then
+            echo "Configuration: Excluding pre-releases."
+            JQ_FILTER='.[] | select(.prerelease == false) | .tag_name'
+          else
+            echo "Configuration: Including pre-releases."
           fi
 
+          echo "Fetching releases from ${{ env.TARGET_REPO }}..."
+          LATEST_TAG=$( \
+            curl -s "https://api.github.com/repos/${{ env.TARGET_REPO }}/releases" | \
+            jq -r "$JQ_FILTER" | \
+            # Use a flexible regex to match various version formats (e.g., 10, 1.2, 1.2.3, 1.2.3.4)
+            grep -E '^[0-9]+(\.[0-9]+)*$' | \
+            head -n 1 \
+          )
+
+          if [[ -z "$LATEST_TAG" ]]; then
+            echo "::error::Could not find a valid semantic version tag for ${{ env.TARGET_REPO }} with the current settings."
+            exit 1
+          fi
+          echo "Latest valid tag found: $LATEST_TAG"
+
+          REMOTE_VERSION="$LATEST_TAG"
           TAG_PREFIX="${{ env.TAG_PREFIX }}"
-          if [[ -n "$TAG_PREFIX" ]]; then
+          if [[ -n "$TAG_PREFIX" && "$LATEST_TAG" == "$TAG_PREFIX"* ]]; then
             REMOTE_VERSION="${LATEST_TAG#"$TAG_PREFIX"}"
             echo "Removed prefix '${TAG_PREFIX}'. Full tag: ${LATEST_TAG}, Version: ${REMOTE_VERSION}"
           else
-            REMOTE_VERSION="$LATEST_TAG"
-            echo "No prefix to remove. Full tag: ${LATEST_TAG}, Version: ${REMOTE_VERSION}"
+            echo "No prefix to remove. Version is ${REMOTE_VERSION}"
           fi
           
           echo "REMOTE_VERSION=$REMOTE_VERSION" >> $GITHUB_ENV
@@ -47,16 +68,26 @@ jobs:
       - name: Get local spec version
         id: get_local_version
         run: |
+          if [[ ! -f "${{ env.SPEC_FILE }}" ]]; then
+            echo "::error::Spec file not found at ${{ env.SPEC_FILE }}"
+            exit 1
+          fi
+
           LOCAL_VERSION=$(awk -F ': ' '/^Version:/ {print $2}' ${{ env.SPEC_FILE }})
+
+          if ! [[ "$LOCAL_VERSION" =~ ^[0-9] ]]; then
+            echo "::error::Invalid local version in ${{ env.SPEC_FILE }}: '$LOCAL_VERSION'. Version must start with a digit."
+            exit 1
+          fi
+
           echo "LOCAL_VERSION=$LOCAL_VERSION" >> $GITHUB_ENV
           echo "local_version=$LOCAL_VERSION" >> $GITHUB_OUTPUT
 
       - name: Compare versions and update spec file
-        if: steps.get_remote_tag.outputs.remote_version != '' && steps.get_local_version.outputs.local_version != ''
-        id: compare_versions_and_update_spec_file
+        id: compare_versions
         run: |
-          REMOTE_VERSION="${{ env.REMOTE_VERSION }}"
-          LOCAL_VERSION="${{ env.LOCAL_VERSION }}"
+          REMOTE_VERSION="${{ steps.get_remote_tag.outputs.remote_version }}"
+          LOCAL_VERSION="${{ steps.get_local_version.outputs.local_version }}"
 
           echo "Remote Version ($REMOTE_VERSION) vs. Local Version ($LOCAL_VERSION)"
 
@@ -69,22 +100,12 @@ jobs:
             echo "updated_spec=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Configure Git if spec file updated
-        if: steps.compare_versions_and_update_spec_file.outputs.updated_spec == 'true'
+      - name: Commit and Push Changes
+        if: steps.compare_versions.outputs.updated_spec == 'true'
         run: |
-          git config --local user.email "actions@github.com"
-          git config --local user.name "GitHub Actions"
-
-      - name: Commit changes if spec file updated
-        if: steps.compare_versions_and_update_spec_file.outputs.updated_spec == 'true'
-        id: commit_changes_if_spec_file_updated
-        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
           git add ${{ env.SPEC_FILE }}
           git commit -m "chore: Update ${{ env.SPEC_FILE }} to version ${{ env.REMOTE_VERSION }}"
-          echo "committed=true" >> $GITHUB_OUTPUT
-        continue-on-error: true
-
-      - name: Push changes if commit was made
-        if: steps.compare_versions_and_update_spec_file.outputs.updated_spec == 'true' && steps.commit_changes_if_spec_file_updated.outputs.committed == 'true'
-        run: |
-          git push origin HEAD:${{ github.ref_name }}
+          git push
