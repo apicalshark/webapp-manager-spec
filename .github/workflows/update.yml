@@ -17,9 +17,7 @@ jobs:
       # The repository to check for new releases (e.g., "linuxmint/webapp-manager")
       TARGET_REPO: "linuxmint/webapp-manager"
       # The path to your RPM spec file.
-      SPEC_FILE: "webapp-manager.spec" 
-      # Set to 'true' to include pre-releases (e.g., v1.2.3-rc1). Default is false.
-      INCLUDE_PRERELEASES: "false"
+      SPEC_FILE: "webapp-manager.spec"
       # Optional prefix to remove from the git tag (e.g., "v" for tags like "v1.2.3").
       TAG_PREFIX: ""
 
@@ -30,29 +28,28 @@ jobs:
       - name: Get latest release tag from GitHub
         id: get_remote_tag
         run: |
-          JQ_FILTER='.[] | .tag_name'
-          if [[ "${{ env.INCLUDE_PRERELEASES }}" != "true" ]]; then
-            echo "Configuration: Excluding pre-releases."
-            JQ_FILTER='.[] | select(.prerelease == false) | .tag_name'
-          else
-            echo "Configuration: Including pre-releases."
-          fi
-
-          echo "Fetching releases from ${{ env.TARGET_REPO }}..."
+          echo "Fetching all tags from ${{ env.TARGET_REPO }}..."
           LATEST_TAG=$( \
-            curl -s "https://api.github.com/repos/${{ env.TARGET_REPO }}/releases" | \
-            jq -r "$JQ_FILTER" | \
-            # Use a flexible regex to match various version formats (e.g., 10, 1.2, 1.2.3, 1.2.3.4)
+            # 1. Fetch all tags from the correct API endpoint
+            curl -s "https://api.github.com/repos/${{ env.TARGET_REPO }}/tags" | \
+            # 2. Extract just the tag name from each object
+            jq -r '.[].name' | \
+            # 3. Filter for tags that look like version numbers
             grep -E '^[0-9]+(\.[0-9]+)*$' | \
-            head -n 1 \
+            # 4. IMPORTANT: Sort the results using version logic (e.g., 1.10 > 1.9)
+            sort -V | \
+            # 5. Take the last line, which is now the highest version
+            tail -n 1 \
           )
 
+          # Validate that a tag was found
           if [[ -z "$LATEST_TAG" ]]; then
-            echo "::error::Could not find a valid semantic version tag for ${{ env.TARGET_REPO }} with the current settings."
+            echo "::error::Could not find a valid numerical tag for ${{ env.TARGET_REPO }} using the /tags endpoint."
             exit 1
           fi
           echo "Latest valid tag found: $LATEST_TAG"
 
+          # Remove prefix from tag to get the clean version number
           REMOTE_VERSION="$LATEST_TAG"
           TAG_PREFIX="${{ env.TAG_PREFIX }}"
           if [[ -n "$TAG_PREFIX" && "$LATEST_TAG" == "$TAG_PREFIX"* ]]; then
