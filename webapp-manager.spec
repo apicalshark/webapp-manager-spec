@@ -45,7 +45,6 @@ rm -rf %{buildroot}/%{_datadir}/applications/kde4
 %{_bindir}/webapp-manager
 %{_libdir}/webapp-manager/*
 %{_datadir}/applications/webapp-manager.desktop
-%{_datadir}/applications/kde4/*
 %{_datadir}/desktop-directories/webapps-webapps.directory
 %{_datadir}/glib-2.0/schemas/org.x.webapp-manager.gschema.xml
 %{_datadir}/icons/hicolor/scalable/apps/webapp-manager.svg
