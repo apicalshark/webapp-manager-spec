@@ -1,6 +1,6 @@
 Name:    webapp-manager
 Version: 1.4.5
-Release: 2
+Release: 3
 Summary: Web Application Manager
 License: GPLv3+
 URL:     https://github.com/linuxmint/webapp-manager/
@@ -15,6 +15,7 @@ Requires: python3-pillow
 Requires: python3-setproctitle
 Requires: python3-tldextract
 Requires: xapps
+Requires: xapp-symbolic-icons >= 1.0.6
 
 BuildRequires: gettext
 BuildRequires: make
