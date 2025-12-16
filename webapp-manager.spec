@@ -1,6 +1,6 @@
 Name:    webapp-manager
 Version: 1.4.5
-Release: 3
+Release: 2
 Summary: Web Application Manager
 License: GPLv3+
 URL:     https://github.com/linuxmint/webapp-manager/
@@ -40,12 +40,12 @@ install -Dm 755 webapp-manager -t %{buildroot}/%{_bindir}
 cp -r etc %{buildroot}/%{_sysconfdir}
 cp -r usr/lib %{buildroot}/%{_libdir}
 cp -r usr/share %{buildroot}/%{_datadir}
-rm -rf %{buildroot}/%{_datadir}/applications/kde4
 
 %files
 %{_bindir}/webapp-manager
 %{_libdir}/webapp-manager/*
 %{_datadir}/applications/webapp-manager.desktop
+%{_datadir}/applications/kde4/*
 %{_datadir}/desktop-directories/webapps-webapps.directory
 %{_datadir}/glib-2.0/schemas/org.x.webapp-manager.gschema.xml
 %{_datadir}/icons/hicolor/scalable/apps/webapp-manager.svg
