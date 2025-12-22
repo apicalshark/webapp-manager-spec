@@ -1,6 +1,6 @@
 Name:    webapp-manager
 Version: 1.4.5
-Release: 2
+Release: 1
 Summary: Web Application Manager
 License: GPLv3+
 URL:     https://github.com/linuxmint/webapp-manager/
